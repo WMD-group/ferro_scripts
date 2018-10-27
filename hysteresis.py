@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d,splrep,splev
@@ -88,6 +90,7 @@ def get_pol_vs_e(q_energy, energy, celldims, q_chi, chi, E_samples, Ps, debug, m
         The equilibrium polarizations corresponding to values in E_samples.
     """
     c=2.9979e10
+    # au = hartree/bohr^3
     barye_on_au=3.399e-15
     kVpercm_on_statVpercm=1.e5*1.e6/c
     uCpercm2_on_statCpercm2=1e-7*c
@@ -113,7 +116,9 @@ def get_pol_vs_e(q_energy, energy, celldims, q_chi, chi, E_samples, Ps, debug, m
         Free energy density in hartrees per bohr according to Garrity eq 1.
         """
         bulk=np.polyval(e_poly,q)
+        # uC/cm2 * kV/cm = kPa
         dipole1=-(Ps*(q*2-1)*E*kilopascal_on_au)
+        # barye = cgs unit of pressure or energy density
         dipole2=-((0.5*splev(q,chi_spline)*((E*kVpercm_on_statVpercm)**2))*barye_on_au)
         total=bulk+dipole1+dipole2
         if print_fmin_params:
@@ -148,6 +153,10 @@ def get_pol_vs_e(q_energy, energy, celldims, q_chi, chi, E_samples, Ps, debug, m
 
     return ret
 
+"""
+Demonstrates hysteresis_loop() using susceptibility and bulk energy density
+calculations of croconic acid (CRCA) by DFT.
+"""
 if __name__ == "__main__":
     energy_data=np.loadtxt('data/crca_energy_data.txt')
     chi_data=np.loadtxt('data/crca_chi_data.txt')
