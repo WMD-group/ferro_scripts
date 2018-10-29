@@ -6,6 +6,8 @@ from scipy.interpolate import interp1d,splrep,splev
 from scipy.optimize import minimize
 from copy import deepcopy
 import datetime
+import yaml
+import sys
 
 def hysteresis_loop(q_energy, energy, celldims, q_chi, chi, E_max, num_E_samples, Ps, debug):
     """
@@ -158,7 +160,11 @@ Demonstrates hysteresis_loop() using susceptibility and bulk energy density
 calculations of croconic acid (CRCA) by DFT.
 """
 if __name__ == "__main__":
-    energy_data=np.loadtxt('data/crca_energy_data.txt')
-    chi_data=np.loadtxt('data/crca_chi_data.txt')
-    celldims=np.array([17.268118,  9.895541, 20.930228])
-    hysteresis_loop(energy_data[:,0],energy_data[:,1],celldims,chi_data[:,0],chi_data[:,1],1e5,100,30.,False)
+    params_obj=yaml.load(open(sys.argv[1]))
+    cell_dims=np.array(params_obj['cell_dims'])
+    energy_data=np.loadtxt(params_obj['energy_data'])
+    chi_data=np.loadtxt(params_obj['chi_data'])
+    remnant_polarisation=params_obj['remnant_polarisation']
+    Emax=params_obj['Emax']
+    Esamples=params_obj['Esamples']
+    hysteresis_loop(energy_data[:,0],energy_data[:,1],cell_dims,chi_data[:,0],chi_data[:,1],Emax,Esamples,remnant_polarisation,False)

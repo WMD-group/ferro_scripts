@@ -1,0 +1,6 @@
+cell_dims: [17.268118,  9.895541, 20.930228]
+energy_data: data/crca_energy_data.txt
+chi_data: data/crca_chi_data.txt
+remnant_polarisation: 30.0
+Emax: 1.0e+5
+Esamples: 100
