@@ -11,7 +11,7 @@ To generate hysteresis loop, first, create YAML file with values for
 - `remnant_polarisation`: remnant polarisation of ferroelectric in uC/cm<sup>2.
 - `Emax`: maximum external field at which to calculate equilibrium polarization in kV/cm.
 - `Esamples`: number of electric field values between -Emax and +Emax at which polarization will be calculated.
-
+- `debug`: boolean indicating whether contributions to free energy should be printed during minimizations.
 See `ferro_scripts/example_params.yaml` for an example.
 
 
