@@ -8,6 +8,9 @@ from copy import deepcopy
 import datetime
 import yaml
 import sys
+import os
+
+now=datetime.datetime.now()
 
 def hysteresis_loop(q_energy, energy, celldims, q_chi, chi, E_max, num_E_samples, Ps, debug):
     """
@@ -45,6 +48,7 @@ def hysteresis_loop(q_energy, energy, celldims, q_chi, chi, E_max, num_E_samples
 
     P_asc=get_pol_vs_e(q_energy,energy,celldims,q_chi,chi,E_asc,Ps,debug)
     P_des=get_pol_vs_e(q_energy,energy,celldims,q_chi,chi,E_des,Ps,debug)
+    analyze_energy_chi(q_energy, energy, celldims, q_chi, chi)
 
     fg=plt.figure()
     ax=fg.add_subplot(111)
@@ -53,9 +57,78 @@ def hysteresis_loop(q_energy, energy, celldims, q_chi, chi, E_max, num_E_samples
     ax.set_xlabel(r'$E(kV/cm)$')
     ax.set_ylabel(r'$P(\mu C/cm^2)$')
     ax.legend()
-    now=datetime.datetime.now()
+    global now
     timestamp=now.strftime('%Y%m%d_%H%M%S')
-    fg.savefig('hysteresis_loop_'+timestamp)
+    fg.savefig(os.path.join('output','hysteresis_loop_'+timestamp))
+
+def plot(x_data,y_data,data_label,interp):
+    fg=plt.figure()
+    ax=fg.add_subplot(111)
+    ax.plot(x_data,y_data,'bx',label=r'{} data'.format(data_label))
+    x_min=np.min(x_data)
+    x_max=np.max(x_data)
+    x_range=np.linspace(x_min,x_max,len(x_data)*10)
+    ax.plot(x_range,interp(x_range),'r.',label=r'{} interpolated'.format(data_label))
+    return ax
+
+def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi):
+    """
+    Plots inputted energy and linear susceptibility vs collective coordinate
+    data with interpolating functions used to generate hysteresis loop. Also
+    prints energy barrier information.
+    Parameters
+    ==========
+    q_energy: array(float)
+        Collective coordinate values corresponding to data in energy variable.
+        Values must be between 0 and 1.
+    energy: array(float)
+        In Hartrees. Bulk energy per unit cell for atomic configurations
+        corresponding to q_energy entries.
+    celldims: array(float)
+        In bohr. Dimensions of unit cell.
+    q_chi: array(float)
+        Collective coordinate values corresponding to data in chi variable.
+        Values must be between 0 and 1.
+    chi: array(float)
+        In esu. Electronic contribution to dielectric susceptibility for
+        configurations along path between ferroelectric configurations.
+    """
+    energy=deepcopy(energy)
+    q_energy=deepcopy(q_energy)
+
+    e_min=np.min(energy)
+    e_max=np.max(energy)
+    energy-=e_min
+    e_poly=np.polyfit(q_energy,energy/np.prod(celldims),6)
+    barrier=e_max-e_min
+    print('Barrier height:\n{0:.3e} hartrees/unit cell\n{1:.3e} eV/unit cell\n{2:.3e} hartrees/a0^3'.format(barrier,barrier*27.21,barrier/np.prod(celldims)))
+
+    def eval_e(q):
+        return np.polyval(e_poly,q)
+    ax=plot(q_energy,energy/np.prod(celldims),'$E$',eval_e)
+    ax.set_xlabel(r'$Q$')
+    ax.set_ylabel(r'$E(Q)(E_\mathrm{H}/a_0^3$)')
+    fg=ax.figure
+    timestamp=now.strftime('%Y%m%d_%H%M%S')
+    fg.savefig(os.path.join('output','energy_'+timestamp))
+
+    # Sort chi(q) by ascending q.
+    sort_idx=np.argsort(q_chi)
+    chi=deepcopy(chi)
+    q_chi=deepcopy(q_chi)
+
+    chi[np.arange(chi.shape[0])]=chi[sort_idx]
+    q_chi[np.arange(chi.shape[0])]=q_chi[sort_idx]
+    chi_spline=splrep(q_chi,chi,k=3)
+    def eval_chi(q):
+        return splev(q,chi_spline)
+
+    ax=plot(q_chi,chi,'$\chi$',eval_chi)
+    ax.set_xlabel(r'$Q$')
+    ax.set_ylabel(r'$\chi(Q)$')
+    fg=ax.figure
+    timestamp=now.strftime('%Y%m%d_%H%M%S')
+    fg.savefig(os.path.join('output','chi_'+timestamp))
 
 def get_pol_vs_e(q_energy, energy, celldims, q_chi, chi, E_samples, Ps, debug, method='TNC',close_prev_figs=True):
     """
@@ -97,9 +170,12 @@ def get_pol_vs_e(q_energy, energy, celldims, q_chi, chi, E_samples, Ps, debug, m
     kVpercm_on_statVpercm=1.e5*1.e6/c
     uCpercm2_on_statCpercm2=1e-7*c
     kilopascal_on_au=1e3/(2.942e13)
+    global now
 
+    energy=deepcopy(energy)
     e_poly=np.polyfit(q_energy,energy/np.prod(celldims),6)
     e_polyder=np.polyder(e_poly)
+
     # Sort chi(q) by ascending q.
     sort_idx=np.argsort(q_chi)
     chi=deepcopy(chi)
