@@ -2,7 +2,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import interp1d,splrep,splev
+from scipy.interpolate import interp1d,splrep,splev,splder
 from scipy.optimize import minimize
 from copy import deepcopy
 import datetime
@@ -91,6 +91,19 @@ def plot_free_energy_curves(e_poly,chi_spline,E_samples,q_samples,Ps):
     global now
     timestamp=now.strftime('%Y%m%d_%H%M%S')
     fg.savefig(os.path.join('output','free_energy_curves','free_energy_curves_'+timestamp))
+
+    fg=plt.figure()
+    ax=fg.add_subplot(111)
+    chi_prime=splder(chi_spline)
+    for e in E_samples:
+        dF=free_energy_derivative(q_samples,chi_prime,np.polyder(e_poly),e,Ps,False)
+        ax.plot(q_samples,dF,'.-',label=r'$E=${0:6.2e}'.format(e))
+    ax.legend()
+    ax.set_xlabel(r'$Q$')
+    ax.set_ylabel(r'$\frac{\mathrm{d}F}{\mathrm{d}Q}(Q;E)(E_\mathrm{H}/a_0^3)$')
+
+    timestamp=now.strftime('%Y%m%d_%H%M%S')
+    fg.savefig(os.path.join('output','dFdQ_curves','dFdQ_curves_'+timestamp))
 
 def plot(x_data,y_data,data_label,interp):
     """
@@ -228,7 +241,7 @@ def get_pol_vs_e(e_poly, chi_spline, E_samples, Ps, debug, method='TNC',close_pr
     if close_prev_figs:
         plt.close('all')
 
-    print_fmin_params=False
+    print_fmin_params=(debug==2)
     E=0
     def wrapped_free_energy(q):
         return free_energy(q,chi_spline,e_poly,E,Ps,print_fmin_params)
@@ -236,18 +249,19 @@ def get_pol_vs_e(e_poly, chi_spline, E_samples, Ps, debug, method='TNC',close_pr
     def wrapped_free_energy_derivative(q):
         return free_energy_derivative(q,chi_spline,e_polyder,E,print_fmin_params)
 
-    q_start=0.5
+    q_start=0.
     ret=np.zeros((len(E_samples),))
     for i,e in enumerate(E_samples):
         E=e
-        res=minimize(wrapped_free_energy,q_start,method=method,bounds=((-0.5,1.5),))
+        print('Minimizing free energy. q_start: {0:.5e}; E:{1:.5e}'.format(float(q_start),float(e)))
+        res=minimize(wrapped_free_energy,q_start,method=method,bounds=((-1.5,1.5),))
         if res.success:
             ret[i]=(res.x*2-1.)*Ps
             q_start=res.x
-            if debug:
-                print('Minimized free energy. P=%f, E=%f. Parameter values:'%(ret[i], E))
+            if debug>0:
+                print('Minimized free energy. Parameter values:')
                 print_fmin_params=debug
-            wrapped_free_energy(res.x)
+                wrapped_free_energy(res.x)
             print_fmin_params=False
         else:
             ret[i]=math.nan
@@ -289,15 +303,15 @@ def free_energy(q,chi_spline,e_poly,E,Ps,print_fmin_params):
 
     bulk=np.polyval(e_poly,q)
     # uC/cm2 * kV/cm = kPa
-    dipole1=-(Ps*(q*2-1)*E*kilopascal_on_au)
+    dipole1=-(Ps*q*E*kilopascal_on_au)
     # barye = cgs unit of pressure or energy density
     dipole2=-((0.5*splev(q,chi_spline)*((E*kVpercm_on_statVpercm)**2))*barye_on_au)
     total=bulk+dipole1+dipole2
     if print_fmin_params:
-        print("q:{:.5e}; E:{:.5e}; F_bulk:{:.5e}; F_dip1:{:.5e}; F_dip2:{:.5e}; F_tot:{:.5e}".format(float(q),float(E),float(bulk),float(dipole1),float(dipole2),float(total)))
+        print("q:{:.5e}; P:{:.5e}; E:{:.5e}; F_bulk:{:.5e}; F_dip1:{:.5e}; F_dip2:{:.5e}; F_tot:{:.5e}".format(float(q),float(Ps*(q*2-1)),float(E),float(bulk),float(dipole1),float(dipole2),float(total)))
     return total
 
-def free_energy_derivative(q,chi_spline,e_polyder,E,Ps,print_fmin_params):
+def free_energy_derivative(q,chi_prime,e_polyder,E,Ps,print_fmin_params):
     """
     Derivative of free energy density with respect to q in hartrees per bohr
     according to Garrity eq 1.
@@ -306,9 +320,10 @@ def free_energy_derivative(q,chi_spline,e_polyder,E,Ps,print_fmin_params):
     q: float
         Collective coordinate value corresponding to data in energy variable.
         Must be between 0 and 1.
-    chi_spline: tuple
+    chi_prime: tuple
         Contains spline knots, coefficient and degree values as returned by
-        scipy.interpolate.splprep. Interpolates linear susceptibility.
+        scipy.interpolate.splprep. Interpolates derivative of linear
+        susceptibility with respect to Q.
     e_poly: array
         Contains coefficients of 6th order polynomial. Interpolates bulk energy
         density in hartrees per cubic bohr.
@@ -332,15 +347,15 @@ def free_energy_derivative(q,chi_spline,e_polyder,E,Ps,print_fmin_params):
     global kilopascal_on_au
 
     bulk=np.polyval(e_polyder,q)
-    dipole1=-(Ps*2*E*kilopascal_on_au)
-    dipole2=-((0.5*spalde(q,chi_spline)*((E*kVpercm_on_statVpercm)**2))*barye_on_au)
+    dipole1=-(Ps*E*kilopascal_on_au)
+    dipole2=-((0.5*splev(q,chi_prime)*((E*kVpercm_on_statVpercm)**2))*barye_on_au)
 
     total=bulk+dipole1+dipole2
 
     if print_fmin_params:
         print("q:{:.5e}; E:{:.5e}; dF_bulk:{:.5e}; dF_dip1:{:.5e}; dF_dip2:{:.5e}; dF_tot:{:.5e}".format(float(q),float(E),float(bulk),float(dipole1),float(dipole2),float(total)))
     return total
-    
+
 """
 Demonstrates hysteresis_loop() using susceptibility and bulk energy density
 calculations of croconic acid (CRCA) by DFT.
