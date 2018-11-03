@@ -62,8 +62,8 @@ def hysteresis_loop(params_obj):
     q_chi[np.arange(chi.shape[0])]=q_chi[sort_idx]
     chi_spline=splrep(q_chi,chi,k=3)
 
+
     P_asc=get_pol_vs_e(e_poly,chi_spline,E_asc,Ps,debug)
-    P_des=get_pol_vs_e(e_poly,chi_spline,E_des,Ps,debug)
     analyze_energy_chi(q_energy, energy, celldims, q_chi, chi)
     qmin=np.min(chi_spline[0])
     qmax=np.max(chi_spline[0])
@@ -71,11 +71,9 @@ def hysteresis_loop(params_obj):
 
     fg=plt.figure()
     ax=fg.add_subplot(111)
-    ax.plot(E_asc,P_asc,'rx-',label='ascending')
-    ax.plot(E_des,P_des,'bx-',label='descending')
+    ax.plot(P_asc[:,1],P_asc[:,0],'b.')
     ax.set_xlabel(r'$E(kV/cm)$')
     ax.set_ylabel(r'$P(\mu C/cm^2)$')
-    ax.legend()
     timestamp=now.strftime('%Y%m%d_%H%M%S')
     fg.savefig(os.path.join('output','loops','hysteresis_loop_'+timestamp))
 
@@ -167,8 +165,9 @@ def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi):
     energy-=e_min
     e_poly=np.polyfit(q_energy,energy/np.prod(celldims),6)
     barrier=e_max-e_min
-    print('Barrier height:\n{0:.3e} hartrees/unit cell\n{1:.3e} eV/unit cell\n{2:.3e} hartrees/a0^3'.format(barrier,barrier*27.21,barrier/np.prod(celldims)))
 
+    print('Barrier height:\n{0:.3e} hartrees/unit cell\n{1:.3e} eV/unit cell\n{2:.3e} hartrees/a0^3'.format(barrier,barrier*27.21,barrier/np.prod(celldims)))
+    print('Landau coefficients (hartree/a0^3):\na:{0:.3e}\nb:{1:.3e}\nc:{2:.3e}'.format(e_poly[4],e_poly[2],e_poly[0]))
     def eval_e(q):
         return np.polyval(e_poly,q)
     ax=plot(q_energy,energy/np.prod(celldims),'$E$',eval_e)
@@ -241,31 +240,30 @@ def get_pol_vs_e(e_poly, chi_spline, E_samples, Ps, debug, method='TNC',close_pr
     if close_prev_figs:
         plt.close('all')
 
-    print_fmin_params=(debug==2)
-    E=0
     def wrapped_free_energy(q):
         return free_energy(q,chi_spline,e_poly,E,Ps,print_fmin_params)
 
     def wrapped_free_energy_derivative(q):
         return free_energy_derivative(q,chi_spline,e_polyder,E,print_fmin_params)
 
-    q_start=0.
-    ret=np.zeros((len(E_samples),))
-    for i,e in enumerate(E_samples):
-        E=e
-        print('Minimizing free energy. q_start: {0:.5e}; E:{1:.5e}'.format(float(q_start),float(e)))
-        res=minimize(wrapped_free_energy,q_start,method=method,bounds=((-1.5,1.5),))
-        if res.success:
-            ret[i]=(res.x*2-1.)*Ps
-            q_start=res.x
-            if debug>0:
-                print('Minimized free energy. Parameter values:')
-                print_fmin_params=debug
-                wrapped_free_energy(res.x)
-            print_fmin_params=False
-        else:
-            ret[i]=math.nan
+    q_range=np.linspace(-1.5,1.5,100)
 
+    chi_prime=splder(chi_spline)
+    pve=[]
+    for i,e in enumerate(E_samples):
+
+        left_dF=free_energy_derivative(q_range[:-1],chi_prime,np.polyder(e_poly),e,Ps,False)
+        right_df=free_energy_derivative(q_range[1:],chi_prime,np.polyder(e_poly),e,Ps,False)
+        signs=(left_dF*right_df <= 0.)
+        q_idx=np.nonzero(signs)[0]
+        p=q_range[q_idx]*Ps
+        print_string="E:{0} p:{1}".format(e,str(p))
+
+        to_add=np.zeros((len(p),2))
+        to_add[:,0]=p
+        to_add[:,1]=e
+        pve+=[to_add]
+    ret=np.concatenate(pve, axis=0)
     return ret
 
 def free_energy(q,chi_spline,e_poly,E,Ps,print_fmin_params):
