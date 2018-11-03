@@ -1,0 +1,7 @@
+cell_dims: [7.5557655954631375,  7.5557655954631375, 7.639508506616256]
+energy_data: data/bto_energy_data.csv
+chi_data: data/bto_chi_data.txt
+remnant_polarisation: 26.0
+Emax: 5.0e+3
+Esamples: 50
+debug: 2
