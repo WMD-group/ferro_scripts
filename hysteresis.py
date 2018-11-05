@@ -166,7 +166,7 @@ def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi):
     e_poly=np.polyfit(q_energy,energy/np.prod(celldims),6)
     barrier=e_max-e_min
 
-    print('Barrier height:\n{0:.3e} hartrees/unit cell\n{1:.3e} eV/unit cell\n{2:.3e} hartrees/a0^3'.format(barrier,barrier*27.21,barrier/np.prod(celldims)))
+    print('Barrier height:\n{0:.3e} hartrees/unit cell\n{1:.3e} eV/unit cell\n{2:.3e} hartrees/a0^3\n{3:.3e} eV/ang^3'.format(barrier,barrier*27.21,barrier/np.prod(celldims),barrier*27.21/np.prod(celldims*0.529)))
     print('Landau coefficients (hartree/a0^3):\na:{0:.3e}\nb:{1:.3e}\nc:{2:.3e}'.format(e_poly[4],e_poly[2],e_poly[0]))
     def eval_e(q):
         return np.polyval(e_poly,q)
