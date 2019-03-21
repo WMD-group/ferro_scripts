@@ -8,15 +8,19 @@ To generate hysteresis loop, first, create YAML file with values for
 - `cell_dims`: dimensions of unit cell in bohr.
 - `energy_data`: path to text file containing space-delimited table. Column 1 contains values of effective coordinate Q (normalised between -1 and 1) expressing an atomic configuration in a 3N-dimensional space between the 2 relaxed ferroelectric configurations. Column 2 contains corresponding values of the energy per unit cell in hartrees.
 - `chi_data`: path to text file containing space-delimited table. Column 1 contains values of effective coordinate Q (normalised between -1 and 1) expressing an atomic configuration in a 3N-dimensional space between the 2 relaxed ferroelectric configurations. Column 2 contains corresponding values of the electronic contribution to the linear polarizability (in cgs units).
-- `remnant_polarisation`: remnant polarisation of ferroelectric in uC/cm<sup>2.
+- `remnant_polarisation`: remnant polarisation of ferroelectric in uC/cm<sup>2</sup>.
 - `Emax`: maximum external field at which to calculate equilibrium polarization in kV/cm.
 - `Esamples`: number of electric field values between -Emax and +Emax at which polarization will be calculated.
 - `debug`: int indicating whether contributions to free energy should be printed during minimizations.
- - 0: never output;
- - 1: output after minimization;
- - 2: output at each free energy evaluation during minimization.
-See `ferro_scripts/example_params.yaml` for an example.
+   - 0: never output;
+   - 1: output after minimization;
+   - 2: output at each free energy evaluation during minimization.
 
+See `ferro_scripts/example_params.yaml` for an example.
 
 Then `cd` into the `ferro_scripts` directory and run
 `python hysteresis.py <path to params YAML file>`.
+
+**Troubleshooting**
+
+1. Hysteresis loop contains fewer points than expected. The electric field values specified through `Emax` and `Esamples` may be too large, which leads to most free energy curves having minima outside $Q\in[-1,1]$. Try reducing `Emax` and/or increasing `Esamples`.
