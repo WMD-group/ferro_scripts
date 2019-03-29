@@ -26,12 +26,23 @@ def hysteresis_loop(params_obj):
     ==========
     params_obj: dict
         - `cell_dims`: dimensions of unit cell in bohr.
-        - `energy_data`: path to text file containing space-delimited table. Column 1 contains values of effective coordinate Q (normalised between 0 and 1) expressing an atomic configuration in a 3N-dimensional space between the 2 relaxed ferroelectric configurations. Column 2 contains corresponding values of the energy per unit cell in hartrees.
-        - `chi_data`: path to text file containing space-delimited table. Column 1 contains values of effective coordinate Q (normalised between 0 and 1) expressing an atomic configuration in a 3N-dimensional space between the 2 relaxed ferroelectric configurations. Column 2 contains corresponding values of the electronic contribution to the linear polarizability (in cgs units).
-        - `remnant_polarisation`: remnant polarisation of ferroelectric in uC/cm<sup>2.
-        - `Emax`: maximum external field at which to calculate equilibrium polarization in kV/cm.
-        - `Esamples`: number of electric field values between -Emax and +Emax at which polarization will be calculated.
-        - `debug`: boolean indicating whether contributions to free energy should be printed during minimizations.
+        - `energy_data`: path to text file containing space-delimited table.
+          Column 1 contains values of effective coordinate Q (normalised between          0 and 1) expressing an atomic configuration in a 3N-dimensional space 
+          between the 2 relaxed ferroelectric configurations. Column 2 contains 
+          corresponding values of the energy per unit cell in hartrees.
+        - `chi_data`: path to text file containing space-delimited table. Colum
+          1 contains values of effective coordinate Q (normalised between 0 and 
+          1) expressing an atomic configuration in a 3N-dimensional space
+          between the 2 relaxed ferroelectric configurations. Column 2 contains 
+          corresponding values of the electronic contribution to the linear 
+          polarizability (in cgs units).
+        - `remnant_polarisation`: remnant polarisation of ferroelectric in
+          uC/cm<sup>2.
+        - `Emax`: maximum external field at which to calculate equilibrium
+          polarization in kV/cm.
+        - `Esamples`: number of electric field values between -Emax and +Emax at          which polarization will be calculated.
+        - `debug`: boolean indicating whether contributions to free energy
+          should be printed during minimizations.
     """
     celldims=np.array(params_obj['cell_dims'])
     energy_data=np.loadtxt(params_obj['energy_data'])
@@ -40,10 +51,10 @@ def hysteresis_loop(params_obj):
     E_max=params_obj['Emax']
     num_E_samples=params_obj['Esamples']
     debug=params_obj['debug']
-
+    symmetrize=params_obj['symmetrize']
+      
     E_max=np.abs(E_max)
     E_asc=np.linspace(-E_max,E_max,num_E_samples)
-    E_des=np.linspace(E_max,-E_max,num_E_samples)
     global now
     now=datetime.datetime.now()
 
@@ -51,6 +62,8 @@ def hysteresis_loop(params_obj):
     energy=deepcopy(energy_data[:,1])
     #energy-=np.min(energy)
     e_poly=np.polyfit(q_energy,energy/np.prod(celldims),6)
+    if symmetrize:
+      e_poly[[1,3,5]]=0.0
     e_polyder=np.polyder(e_poly)
 
     # Sort chi(q) by ascending q.
@@ -62,9 +75,8 @@ def hysteresis_loop(params_obj):
     q_chi[np.arange(chi.shape[0])]=q_chi[sort_idx]
     chi_spline=splrep(q_chi,chi,k=3)
 
-
     P_asc=get_pol_vs_e(e_poly,chi_spline,E_asc,Ps,debug)
-    analyze_energy_chi(q_energy, energy, celldims, q_chi, chi)
+    analyze_energy_chi(q_energy, energy, celldims, q_chi, chi, symmetrize, Ps)
     qmin=np.min(chi_spline[0])
     qmax=np.max(chi_spline[0])
     plot_free_energy_curves(e_poly,chi_spline,E_asc,np.linspace(qmin,qmax,100),Ps)
@@ -135,7 +147,7 @@ def plot(x_data,y_data,data_label,interp):
     ax.legend()
     return ax
 
-def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi):
+def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi, symmetrize, Ps):
     """
     Plots inputted energy and linear susceptibility vs collective coordinate
     data with interpolating functions used to generate hysteresis loop. Also
@@ -156,18 +168,36 @@ def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi):
     chi: array(float)
         In esu. Electronic contribution to dielectric susceptibility for
         configurations along path between ferroelectric configurations.
+		symmetrize: bool
+        Polynomial fit of energy vs q_energy is forced to be symmetric.
     """
     energy=deepcopy(energy)
     q_energy=deepcopy(q_energy)
-
+    
+    global kilopascal_on_au
+    
+    cell_vol=np.prod(celldims)
     e_min=np.min(energy)
     e_max=np.max(energy)
     energy-=e_min
     e_poly=np.polyfit(q_energy,energy/np.prod(celldims),6)
+    if symmetrize:
+      e_poly[[1,3,5]]=0.0
     barrier=e_max-e_min
+    coercive_field=(barrier/(Ps*kilopascal_on_au*cell_vol))
 
-    print('Barrier height:\n{0:.3e} hartrees/unit cell\n{1:.3e} eV/unit cell\n{2:.3e} hartrees/a0^3\n{3:.3e} eV/ang^3'.format(barrier,barrier*27.21,barrier/np.prod(celldims),barrier*27.21/np.prod(celldims*0.529)))
-    print('Landau coefficients (hartree/a0^3):\na:{0:.3e}\nb:{1:.3e}\nc:{2:.3e}'.format(e_poly[4],e_poly[2],e_poly[0]))
+
+    print(("Barrier height:\n"
+      "{0:.3e}  hartrees/unit cell\n"
+      "{1:.3e} eV/unit cell\n"
+      "{2:.3e} hartrees/a0^3\n"
+      "{3:.3e} eV/ang^3").format(barrier, barrier*27.21,
+      barrier/np.prod(celldims),barrier*27.21/(cell_vol*5.29**3)))
+    print(("Landau coefficients (hartree/a0^3):\n"
+      "a:{0:.3e}\nb:{1:.3e}\nc:{2:.3e}").format(e_poly[4],
+      e_poly[2],e_poly[0]))
+    print('Approximate coercive field: {0:.3e}'.format(coercive_field))
+
     def eval_e(q):
         return np.polyval(e_poly,q)
     ax=plot(q_energy,energy/np.prod(celldims),'$E$',eval_e)
