@@ -196,7 +196,7 @@ def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi, symmetrize, Ps):
     print(("Landau coefficients (hartree/a0^3):\n"
       "a:{0:.3e}\nb:{1:.3e}\nc:{2:.3e}").format(e_poly[4],
       e_poly[2],e_poly[0]))
-    print('Approximate coercive field: {0:.3e}'.format(coercive_field))
+    print('Approximate coercive field (kV/cm): {0:.3e}'.format(coercive_field))
 
     def eval_e(q):
         return np.polyval(e_poly,q)
