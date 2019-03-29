@@ -9,6 +9,7 @@ import datetime
 import yaml
 import sys
 import os
+import pathlib
 
 now=datetime.datetime.now()
 c=2.9979e10
@@ -87,6 +88,7 @@ def hysteresis_loop(params_obj):
     ax.set_xlabel(r'$E(kV/cm)$')
     ax.set_ylabel(r'$P(\mu C/cm^2)$')
     timestamp=now.strftime('%Y%m%d_%H%M%S')
+    pathlib.Path(os.path.join('output','loops')).mkdir(parents=True,exist_ok=True)
     fg.savefig(os.path.join('output','loops','hysteresis_loop_'+timestamp))
 
 def plot_free_energy_curves(e_poly,chi_spline,E_samples,q_samples,Ps):
@@ -100,6 +102,7 @@ def plot_free_energy_curves(e_poly,chi_spline,E_samples,q_samples,Ps):
     ax.set_ylabel(r'$F(Q;E)(E_\mathrm{H}/a_0^3)$')
     global now
     timestamp=now.strftime('%Y%m%d_%H%M%S')
+    pathlib.Path(os.path.join('output','free_energy_curves')).mkdir(parents=True,exist_ok=True)
     fg.savefig(os.path.join('output','free_energy_curves','free_energy_curves_'+timestamp))
 
     fg=plt.figure()
@@ -113,6 +116,7 @@ def plot_free_energy_curves(e_poly,chi_spline,E_samples,q_samples,Ps):
     ax.set_ylabel(r'$\frac{\mathrm{d}F}{\mathrm{d}Q}(Q;E)(E_\mathrm{H}/a_0^3)$')
 
     timestamp=now.strftime('%Y%m%d_%H%M%S')
+    pathlib.Path(os.path.join('output','dFdQ_curves')).mkdir(parents=True,exist_ok=True)
     fg.savefig(os.path.join('output','dFdQ_curves','dFdQ_curves_'+timestamp))
 
 def plot(x_data,y_data,data_label,interp):
@@ -205,6 +209,7 @@ def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi, symmetrize, Ps):
     ax.set_ylabel(r'$E(Q)(E_\mathrm{H}/a_0^3$)')
     fg=ax.figure
     timestamp=now.strftime('%Y%m%d_%H%M%S')
+    pathlib.Path(os.path.join('output','energy')).mkdir(parents=True,exist_ok=True)
     fg.savefig(os.path.join('output','energy','energy_'+timestamp))
 
     # Sort chi(q) by ascending q.
@@ -223,6 +228,7 @@ def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi, symmetrize, Ps):
     ax.set_ylabel(r'$\chi(Q)$')
     fg=ax.figure
     timestamp=now.strftime('%Y%m%d_%H%M%S')
+    pathlib.Path(os.path.join('output','chi')).mkdir(parents=True,exist_ok=True)
     fg.savefig(os.path.join('output','chi','chi_'+timestamp))
 
 def get_pol_vs_e(e_poly, chi_spline, E_samples, Ps, debug, method='TNC',close_prev_figs=True):
