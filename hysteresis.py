@@ -13,11 +13,99 @@ import pathlib
 
 now=datetime.datetime.now()
 c=2.9979e10
-# au = hartree/bohr^3
-barye_on_au=3.399e-15
 kVpercm_on_statVpercm=1.e5*1.e6/c
 uCpercm2_on_statCpercm2=1e-7*c
-kilopascal_on_au=1e3/(2.942e13)
+kilopascal_on_au=1./(2.942e10)
+barye_on_au=1.e-4*kilopascal_on_au
+
+def barrier_vs_Ec(parms):
+  """
+  Calculate the dependence of coercive field on polarization switching energy
+  barrier height.
+  Parameters
+  ==========
+  parms: dict
+    Contains
+    cell_dims: array(float). Unit cell dimensions in bohr.
+    energy_data: str. Path pointing to file containing table with energy per
+      unit cell in column 2 and corresponding Q values in column 1.
+    chi_data: str. Path pointing to file containing table with electronic
+      susceptibility cell in column 2 and corresponding Q values in column 1.
+    remnant_polarization: float. Remnant polarization in uC/cm2
+    symmetrize: bool. If True, energy curve is symmetrized.
+    num_E_samples: int. Number of electric field values to scan to find coercive
+      field for each barrier height value.
+    barrier: dict
+      spacing: str. If "linear", barrier height values with be spaced linearly
+        between min and max. If "log", spacing is logarithmic/geometric.
+      min: float. Minimum barrier height whose corresponding coercive field is
+        calculated.
+      max: float. Maximum barrier height whose corresponding coercive field is
+        calculated.
+      num: int. Number of barrier heights whose corresponding coercive field
+        will be calculated.
+  """
+  celldims=np.array(parms['cell_dims'])
+  energy_data=np.loadtxt(parms['energy_data'])
+  chi_data=np.loadtxt(parms['chi_data'])
+  Ps=parms['remnant_polarisation']
+  debug=parms['debug']
+  symmetrize=parms['symmetrize']
+  num_E_samples=parms["num_E_samples"]
+
+  global now
+  now=datetime.datetime.now()
+
+  q_energy=energy_data[:,0]
+  # Sort chi(q) by ascending q.
+  sort_idx=np.argsort(chi_data[:,0])
+  chi=deepcopy(chi_data[:,1])
+  q_chi=deepcopy(chi_data[:,0])
+
+  chi[np.arange(chi.shape[0])]=chi[sort_idx]
+  q_chi[np.arange(chi.shape[0])]=q_chi[sort_idx]
+  chi_spline=splrep(q_chi,chi,k=3)
+
+  energy=deepcopy(energy_data[:,1])
+  e_poly=np.polyfit(q_energy,energy/np.prod(celldims),6)
+  if symmetrize:
+    e_poly[[1,3,5]]=0.0
+  e_polyder=np.polyder(e_poly)
+
+  unscaled_barrier,approx_Ec,landau_a,landau_b,landau_c=analyze_energy_chi(
+    q_energy,energy,celldims,q_chi,chi,symmetrize,Ps)
+
+  if parms["barriers"]["spacing"]  == "log":
+    barriers=np.geomspace(parms["barriers"]["min"],parms["barriers"]["max"],
+      parms["barriers"]["num"])
+  elif parms["barriers"]["spacing"]  == "linear":
+    barriers=np.linspace(parms["barriers"]["min"],parms["barriers"]["max"],
+      parms["barriers"]["num"])
+  else:
+    print("Barrier value spacing style {0} not recognised".format(
+      parms["barriers"]["spacing"]))
+    return
+
+  b_vs_Ec=np.zeros((parms["barriers"]["num"],3))
+  for barrier_idx,barrier in enumerate(barriers):
+    print("barrier: {0:.3e}".format(barrier))
+    energy=energy_data[:,1]*(barrier/unscaled_barrier)
+    e_poly=np.polyfit(q_energy,energy/np.prod(celldims),6)
+    barrier,approx_Ec,landau_a,landau_b,landau_c=analyze_energy_chi(q_energy,
+      energy,celldims,q_chi,chi,symmetrize,Ps)
+    E_max=approx_Ec*10
+    E_asc=np.linspace(-E_max,E_max,num_E_samples)
+    pol_vs_E,pos_Ec,neg_Ec=get_pol_vs_e(e_poly,chi_spline,E_asc,Ps,False)
+    b_vs_Ec[barrier_idx,:]=barrier,neg_Ec,pos_Ec
+  
+  timestamp=now.strftime('%Y%m%d_%H%M%S')
+  np.savetxt(os.path.join("output","barrier_vs_Ec","barrier_vs_Ec_{0}.txt".format(timestamp)),b_vs_Ec)
+
+  ax=plot(b_vs_Ec[:,0],b_vs_Ec[:,2],"$\mathcal{E}_C$ (kV/cm)",None)
+  ax.set_xlabel("barrier height (ha/unit cell)")
+  ax.set_ylabel(r"$\mathcal{E}_C$ (kV/cm)")
+  fg=ax.figure
+  fg.savefig(os.path.join("output","barrier_vs_Ec","barrier_vs_Ec_{0}.png".format(timestamp)))
 
 def hysteresis_loop(params_obj):
     """
@@ -53,7 +141,7 @@ def hysteresis_loop(params_obj):
     num_E_samples=params_obj['Esamples']
     debug=params_obj['debug']
     symmetrize=params_obj['symmetrize']
-      
+
     E_max=np.abs(E_max)
     E_asc=np.linspace(-E_max,E_max,num_E_samples)
     global now
@@ -61,7 +149,6 @@ def hysteresis_loop(params_obj):
 
     q_energy=energy_data[:,0]
     energy=deepcopy(energy_data[:,1])
-    #energy-=np.min(energy)
     e_poly=np.polyfit(q_energy,energy/np.prod(celldims),6)
     if symmetrize:
       e_poly[[1,3,5]]=0.0
@@ -76,21 +163,41 @@ def hysteresis_loop(params_obj):
     q_chi[np.arange(chi.shape[0])]=q_chi[sort_idx]
     chi_spline=splrep(q_chi,chi,k=3)
 
-    P_asc=get_pol_vs_e(e_poly,chi_spline,E_asc,Ps,debug)
-    analyze_energy_chi(q_energy, energy, celldims, q_chi, chi, symmetrize, Ps)
+    pol_vs_E,pos_Ec,neg_Ec=get_pol_vs_e(e_poly,chi_spline,E_asc,Ps,debug)
+    barrier,approx_Ec,landau_a,landau_b,landau_c=analyze_energy_chi(q_energy,
+      energy,celldims, q_chi, chi, symmetrize, Ps)
+
+    cell_vol=np.prod(celldims)
+    print(("Barrier height:\n"
+      "{0:.3e} hartrees/unit cell\n"
+      "{1:.3e} eV/unit cell\n"
+      "{2:.3e} hartrees/a0^3\n"
+      "{3:.3e} eV/ang^3").format(barrier, barrier*27.21,
+      barrier/np.prod(celldims),barrier*27.21/(cell_vol*5.29**3)))
+    
+    print(("Landau coefficients (hartree/a0^3):\n"
+      "a:{0:.3e}\nb:{1:.3e}\nc:{2:.3e}").format(landau_a,landau_b,landau_c))
+    
+    print('Approximate coercive field (kV/cm): {0:.3e}'.format(approx_Ec))
+
+
     qmin=np.min(chi_spline[0])
     qmax=np.max(chi_spline[0])
-    plot_free_energy_curves(e_poly,chi_spline,E_asc,np.linspace(qmin,qmax,100),Ps)
+   
+    if params_obj["num_free_energy_plots"] > 0:
+      plotstride=int(num_E_samples/
+        params_obj["num_free_energy_plots"])
+      plot_free_energy_curves(e_poly,chi_spline,E_asc[::plotstride],np.linspace(qmin,qmax,100),Ps)
 
     fg=plt.figure()
     ax=fg.add_subplot(111)
-    ax.plot(P_asc[:,1],P_asc[:,0],'b.')
+    ax.plot(pol_vs_E[:,1],pol_vs_E[:,0],'b.')
     ax.set_xlabel(r'$E(kV/cm)$')
     ax.set_ylabel(r'$P(\mu C/cm^2)$')
     timestamp=now.strftime('%Y%m%d_%H%M%S')
     pathlib.Path(os.path.join('output','loops')).mkdir(parents=True,exist_ok=True)
     fg.savefig(os.path.join('output','loops','hysteresis_loop_'+timestamp))
-
+    
 def plot_free_energy_curves(e_poly,chi_spline,E_samples,q_samples,Ps):
     fg=plt.figure()
     ax=fg.add_subplot(111)
@@ -145,7 +252,8 @@ def plot(x_data,y_data,data_label,interp):
     x_min=np.min(x_data)
     x_max=np.max(x_data)
     x_range=np.linspace(x_min,x_max,len(x_data)*10)
-    ax.plot(x_range,interp(x_range),'r.',label=r'{} interpolated'.format(data_label))
+    if interp is not None:
+      ax.plot(x_range,interp(x_range),'r.',label=r'{} interpolated'.format(data_label))
     ax.ticklabel_format(style='scientific',scilimits=(-2,3),axis='both')
 
     ax.legend()
@@ -154,8 +262,7 @@ def plot(x_data,y_data,data_label,interp):
 def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi, symmetrize, Ps):
     """
     Plots inputted energy and linear susceptibility vs collective coordinate
-    data with interpolating functions used to generate hysteresis loop. Also
-    prints energy barrier information.
+    data with interpolating functions used to generate hysteresis loop. 
     Parameters
     ==========
     q_energy: array(float)
@@ -191,17 +298,6 @@ def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi, symmetrize, Ps):
     coercive_field=(barrier/(Ps*kilopascal_on_au*cell_vol))
 
 
-    print(("Barrier height:\n"
-      "{0:.3e}  hartrees/unit cell\n"
-      "{1:.3e} eV/unit cell\n"
-      "{2:.3e} hartrees/a0^3\n"
-      "{3:.3e} eV/ang^3").format(barrier, barrier*27.21,
-      barrier/np.prod(celldims),barrier*27.21/(cell_vol*5.29**3)))
-    print(("Landau coefficients (hartree/a0^3):\n"
-      "a:{0:.3e}\nb:{1:.3e}\nc:{2:.3e}").format(e_poly[4],
-      e_poly[2],e_poly[0]))
-    print('Approximate coercive field (kV/cm): {0:.3e}'.format(coercive_field))
-
     def eval_e(q):
         return np.polyval(e_poly,q)
     ax=plot(q_energy,energy/np.prod(celldims),'$E$',eval_e)
@@ -230,6 +326,8 @@ def analyze_energy_chi(q_energy, energy, celldims, q_chi, chi, symmetrize, Ps):
     timestamp=now.strftime('%Y%m%d_%H%M%S')
     pathlib.Path(os.path.join('output','chi')).mkdir(parents=True,exist_ok=True)
     fg.savefig(os.path.join('output','chi','chi_'+timestamp))
+
+    return barrier,coercive_field,e_poly[4],e_poly[2],e_poly[0]
 
 def get_pol_vs_e(e_poly, chi_spline, E_samples, Ps, debug, method='TNC',close_prev_figs=True):
     """
@@ -285,21 +383,34 @@ def get_pol_vs_e(e_poly, chi_spline, E_samples, Ps, debug, method='TNC',close_pr
     q_range=np.linspace(-1.5,1.5,100)
 
     chi_prime=splder(chi_spline)
-    pve=[]
+    p_vs_E=[]
+    supercoercive_flags=np.full(E_samples.shape,False)
     for i,e in enumerate(E_samples):
-
+        # Find Q where dF/dQ = 0.
         left_dF=free_energy_derivative(q_range[:-1],chi_prime,np.polyder(e_poly),e,Ps,False)
         right_df=free_energy_derivative(q_range[1:],chi_prime,np.polyder(e_poly),e,Ps,False)
         signs=(left_dF*right_df <= 0.)
         q_idx=np.nonzero(signs)[0]
         p=q_range[q_idx]*Ps
         print_string="E:{0} p:{1}".format(e,str(p))
-
+        supercoercive_flags[i]=(len(p)==1)
         to_add=np.zeros((len(p),2))
         to_add[:,0]=p
         to_add[:,1]=e
-        pve+=[to_add]
-    ret=np.concatenate(pve, axis=0)
+        p_vs_E+=[to_add]
+
+    all_pol_vs_E=np.concatenate(p_vs_E, axis=0) 
+    supercoercive_fields=E_samples[supercoercive_flags]
+    if len(supercoercive_fields) > 2 and (np.any(supercoercive_fields>0.) and
+        np.any(supercoercive_fields<0.)):
+        positive_Ec=np.min(supercoercive_fields[supercoercive_fields>0.])
+        negative_Ec=np.max(supercoercive_fields[supercoercive_fields<0.])
+        print("+Ec={0:.3e}, -Ec={1:.3e}".format(positive_Ec,negative_Ec))
+        ret=(all_pol_vs_E,positive_Ec,negative_Ec)
+    else:
+      print("Could not calculate coercive field. Consider increasing Emax.")
+      ret=(np.concatenate(p_vs_E, axis=0),None,None)
+    
     return ret
 
 def free_energy(q,chi_spline,e_poly,E,Ps,print_fmin_params):
@@ -395,6 +506,11 @@ Demonstrates hysteresis_loop() using susceptibility and bulk energy density
 calculations of croconic acid (CRCA) by DFT.
 """
 if __name__ == "__main__":
-    params_obj=yaml.load(open(sys.argv[1]))
-
-    hysteresis_loop(params_obj)
+  if sys.argv[1] == "loop": 
+    parms=yaml.load(open(sys.argv[2]))
+    hysteresis_loop(parms)
+  elif sys.argv[1] == "barrier_vs_Ec":
+    parms=yaml.load(open(sys.argv[2]))
+    barrier_vs_Ec(parms)
+  else:
+    print("Command {0} not recognised.".format(sys.argv[1]))
